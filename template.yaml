@@ -1,0 +1,248 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Gyazo-like service using AWS services with Basic Authentication and CloudFront'
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: Name of the S3 bucket to store images
+  BasicAuthUsername:
+    Type: String
+    Description: Username for Basic Authentication
+  BasicAuthPassword:
+    Type: String
+    Description: Password for Basic Authentication
+    NoEcho: true
+
+Resources:
+  ImageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  CloudFrontOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub "OAI for ${BucketName}"
+
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ImageBucket
+      PolicyDocument:
+        Statement:
+          - Action: 's3:GetObject'
+            Effect: Allow
+            Resource: !Sub '${ImageBucket.Arn}/*'
+            Principal:
+              CanonicalUser: !GetAtt CloudFrontOriginAccessIdentity.S3CanonicalUserId
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          ForwardedValues:
+            QueryString: false
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+        Enabled: true
+        HttpVersion: http2
+        Origins:
+          - DomainName: !GetAtt ImageBucket.RegionalDomainName
+            Id: S3Origin
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}'
+        PriceClass: PriceClass_100
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3AccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource: !Sub ${ImageBucket.Arn}/*
+
+  UploadFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+          const s3Client = new S3Client({ region: process.env.AWS_DEFAULT_REGION });
+
+          exports.handler = async (event) => {
+            try {
+              const body = JSON.parse(event.body);
+              const imageData = Buffer.from(body.image, 'base64');
+              const key = `${Date.now()}.png`;
+
+              const command = new PutObjectCommand({
+                Bucket: process.env.BUCKET_NAME,
+                Key: key,
+                Body: imageData,
+                ContentType: 'image/png',
+                StorageClass: 'GLACIER_IR'  // ?????????Glacier Instant Retrieval???
+              });
+
+              await s3Client.send(command);
+
+              return {
+                statusCode: 200,
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  url: `https://${process.env.CLOUDFRONT_DOMAIN}/${key}`
+                })
+              };
+            } catch (error) {
+              console.error('Error:', error);
+              return {
+                statusCode: 500,
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ error: 'An error occurred while processing your request.' })
+              };
+            }
+          };
+      Runtime: nodejs22.x
+      Timeout: 10
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref ImageBucket
+          CLOUDFRONT_DOMAIN: !GetAtt CloudFrontDistribution.DomainName
+
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: ImageUploadAPI
+
+  ApiResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: upload
+      RestApiId: !Ref ApiGateway
+
+  ApiAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Name: BasicAuthorizer
+      Type: REQUEST
+      IdentitySource: method.request.header.Authorization
+      RestApiId: !Ref ApiGateway
+      AuthorizerUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthorizerFunction.Arn}/invocations
+      AuthorizerResultTtlInSeconds: 300
+
+  ApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: POST
+      ResourceId: !Ref ApiResource
+      RestApiId: !Ref ApiGateway
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref ApiAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UploadFunction.Arn}/invocations
+
+
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: ApiMethod
+    Properties:
+      RestApiId: !Ref ApiGateway
+      StageName: prod
+
+  LambdaApiGatewayPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt UploadFunction.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/upload
+
+  AuthorizerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            const authHeader = event.headers.Authorization || event.headers.authorization;
+            if (!authHeader) return generatePolicy('user', 'Deny', event.methodArn);
+            
+            const encodedCreds = authHeader.split(' ')[1];
+            const plainCreds = Buffer.from(encodedCreds, 'base64').toString().split(':');
+            const username = plainCreds[0];
+            const password = plainCreds[1];
+            
+            if (username === process.env.AUTH_USERNAME && password === process.env.AUTH_PASSWORD) {
+              return generatePolicy('user', 'Allow', event.methodArn);
+            }
+            
+            return generatePolicy('user', 'Deny', event.methodArn);
+          };
+
+          const generatePolicy = (principalId, effect, resource) => {
+            return {
+              principalId: principalId,
+              policyDocument: {
+                Version: '2012-10-17',
+                Statement: [{
+                  Action: 'execute-api:Invoke',
+                  Effect: effect,
+                  Resource: resource
+                }]
+              }
+            };
+          };
+      Runtime: nodejs22.x
+      Environment:
+        Variables:
+          AUTH_USERNAME: !Ref BasicAuthUsername
+          AUTH_PASSWORD: !Ref BasicAuthPassword
+
+  AuthorizerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref AuthorizerFunction
+      Principal: apigateway.amazonaws.com
+
+Outputs:
+  ApiEndpoint:
+    Description: "API Endpoint"
+    Value: !Sub https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/upload
+  CloudFrontDomain:
+    Description: "CloudFront Distribution Domain"
+    Value: !GetAtt CloudFrontDistribution.DomainName
