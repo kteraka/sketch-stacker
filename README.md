@@ -9,9 +9,9 @@ api Gateway+lambda を介して S3バケット上に画像を保存し、CloudFr
 
 1. template.yaml を用いて CloudFormation でスタック作成
 2. パラメータに以下を指定
-  2-1. BasicAuthPassword: 画像アップロード時の Basic 認証時に指定するパスワード
-  2-2. BasicAuthUsername: 画像アップロード時の Basic 認証時に指定するユーザーネーム
-  2-3. BucketName: 画像保存先の S3 バケット名
+  3. BasicAuthPassword: 画像アップロード時の Basic 認証時に指定するパスワード
+  4. BasicAuthUsername: 画像アップロード時の Basic 認証時に指定するユーザーネーム
+  5. BucketName: 画像保存先の S3 バケット名
 
 # 使用方法
 ```
