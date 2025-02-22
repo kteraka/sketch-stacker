@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>画像一覧</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; }
+        .gallery { display: flex; flex-wrap: wrap; justify-content: center; }
+        .gallery-item { position: relative; margin: 10px; }
+        .gallery img { width: 200px; height: auto; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .copy-btn { position: absolute; top: 10px; right: 10px; padding: 5px 10px; background-color: rgba(0, 0, 0, 0.6); color: white; border: none; cursor: pointer; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div class="gallery" id="gallery"></div>
+    <script>
+        const BASE_URL = "https://d3bbpjrhbo1x61.cloudfront.net/";
+        const JSON_URL = BASE_URL + "viewer/images.json";
+
+        fetch(JSON_URL)
+            .then(response => response.json())
+            .then(images => {
+                // タイムスタンプ順にソート（降順）
+                images.sort((a, b) => b.localeCompare(a));
+
+                const gallery = document.getElementById("gallery");
+                images.forEach(filename => {
+                    const galleryItem = document.createElement("div");
+                    galleryItem.classList.add("gallery-item");
+
+                    const img = document.createElement("img");
+                    img.src = BASE_URL + filename;
+                    img.alt = filename;
+
+                    const copyBtn = document.createElement("button");
+                    copyBtn.classList.add("copy-btn");
+                    copyBtn.textContent = "Copy";
+                    copyBtn.onclick = () => {
+                        const input = document.createElement("input");
+                        input.value = BASE_URL + filename;
+                        document.body.appendChild(input);
+                        input.select();
+                        document.execCommand("copy");
+                        document.body.removeChild(input);
+                    };
+
+                    galleryItem.appendChild(img);
+                    galleryItem.appendChild(copyBtn);
+                    gallery.appendChild(galleryItem);
+                });
+            })
+            .catch(error => console.error("画像リストの取得に失敗:", error));
+    </script>
+</body>
+</html>

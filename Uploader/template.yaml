@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: 'Gyazo-like service using AWS services with Basic Authentication and CloudFront'
 
 Parameters:
-  BucketName:
+  ImageBucketName:
     Type: String
     Description: Name of the S3 bucket to store images
   BasicAuthUsername:
@@ -12,25 +12,38 @@ Parameters:
     Type: String
     Description: Password for Basic Authentication
     NoEcho: true
+  ViewerBucketName:
+    Type: String
+    Description: Name of the S3 bucket to locate viewer site
+  ImagesJsonFilenamePath:
+    Type: String
+    Default: viewer/images.json
+    Description: This Json file logs filenames stored in ImageBucket
 
 Resources:
   ImageBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Ref BucketName
+      BucketName: !Ref ImageBucketName
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
 
-  CloudFrontOriginAccessIdentity:
+  CloudFrontOriginAccessIdentityForImageBucket:
     Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
     Properties:
       CloudFrontOriginAccessIdentityConfig:
-        Comment: !Sub "OAI for ${BucketName}"
+        Comment: !Sub "OAI for ${ImageBucketName}"
 
-  BucketPolicy:
+  CloudFrontOriginAccessIdentityForViewerBucket:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub "OAI for ${ViewerBucketName}"
+
+  ImageBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
       Bucket: !Ref ImageBucket
@@ -40,7 +53,7 @@ Resources:
             Effect: Allow
             Resource: !Sub '${ImageBucket.Arn}/*'
             Principal:
-              CanonicalUser: !GetAtt CloudFrontOriginAccessIdentity.S3CanonicalUserId
+              CanonicalUser: !GetAtt CloudFrontOriginAccessIdentityForImageBucket.S3CanonicalUserId
 
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
@@ -53,18 +66,32 @@ Resources:
             - OPTIONS
           ForwardedValues:
             QueryString: false
-          TargetOriginId: S3Origin
+          TargetOriginId: ImageS3Origin
           ViewerProtocolPolicy: redirect-to-https
         Enabled: true
         HttpVersion: http2
         Origins:
           - DomainName: !GetAtt ImageBucket.RegionalDomainName
-            Id: S3Origin
+            Id: ImageS3Origin
             S3OriginConfig:
-              OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}'
+              OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentityForImageBucket}'
+          - DomainName: !GetAtt ViewerBucket.RegionalDomainName
+            Id: ViewerS3Origin
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentityForViewerBucket}'
         PriceClass: PriceClass_100
+        CacheBehaviors:
+          - PathPattern: '/viewer/*'
+            TargetOriginId: ViewerS3Origin
+            AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+            ForwardedValues:
+              QueryString: false
+            ViewerProtocolPolicy: redirect-to-https
 
-  LambdaExecutionRole:
+  UploadLambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -90,7 +117,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       Handler: index.handler
-      Role: !GetAtt LambdaExecutionRole.Arn
+      Role: !GetAtt UploadLambdaExecutionRole.Arn
       Code:
         ZipFile: |
           const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
@@ -194,7 +221,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       Handler: index.handler
-      Role: !GetAtt LambdaExecutionRole.Arn
+      Role: !GetAtt UploadLambdaExecutionRole.Arn
       Code:
         ZipFile: |
           exports.handler = async (event) => {
@@ -238,6 +265,159 @@ Resources:
       Action: lambda:InvokeFunction
       FunctionName: !Ref AuthorizerFunction
       Principal: apigateway.amazonaws.com
+
+# -----------------------------------------------------------------------------------------------
+# 画像閲覧サイトホスティング用 S3 バケット
+# -----------------------------------------------------------------------------------------------
+
+  ViewerBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref ViewerBucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - "*"
+            AllowedMethods:
+              - GET
+            AllowedHeaders:
+              - "*"
+            MaxAge: 3000
+
+  ViewerBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ViewerBucket
+      PolicyDocument:
+        Statement:
+          - Action: 's3:GetObject'
+            Effect: Allow
+            Resource: !Sub '${ViewerBucket.Arn}/*'
+            Principal:
+              CanonicalUser: !GetAtt CloudFrontOriginAccessIdentityForViewerBucket.S3CanonicalUserId
+
+# -----------------------------------------------------------------------------------------------
+# images.json 更新用リソース
+# -----------------------------------------------------------------------------------------------
+
+  # UpdateImagesJsonLambda 用IAMロール
+  UpdateImagesJsonLambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service: 'lambda.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: 'S3AccessPolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 's3:ListBucket'
+                  - 's3:GetObject'
+                  - 's3:PutObject'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${ViewerBucket}'
+                  - !Sub 'arn:aws:s3:::${ViewerBucket}/*'
+                  - !Sub 'arn:aws:s3:::${ImageBucket}'
+                  - !Sub 'arn:aws:s3:::${ImageBucket}/*'
+              - Effect: 'Allow'
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: 'arn:aws:logs:*:*:*'
+
+  UpdateImagesJsonLambda:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: 'UpdateImagesJsonFunction'
+      Handler: 'index.handler'
+      Role: !GetAtt UpdateImagesJsonLambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          const { S3Client, ListObjectsV2Command, PutObjectCommand } = require('@aws-sdk/client-s3');
+
+          const s3Client = new S3Client({ region: process.env.AWS_DEFAULT_REGION });
+
+          exports.handler = async (event) => {
+            const imageBucket = process.env.IMAGE_BUCKET;
+            const viewerBucket = process.env.VIEWER_BUCKET;
+            const fileName = process.env.IMAGES_JSON_FILENAME_PATH;
+
+            try {
+              // viewerBucket内のオブジェクトリストを取得
+              const listObjectsCommand = new ListObjectsV2Command({ Bucket: imageBucket });
+              const listObjectsResponse = await s3Client.send(listObjectsCommand);
+              const fileNames = listObjectsResponse.Contents.map(object => object.Key);
+              console.log(fileNames);
+
+              // images.jsonファイルとして保存するデータ作成
+              const jsonData = JSON.stringify(fileNames, null, 2);
+              console.log(jsonData);
+
+              // viewerBucketにimages.jsonを保存
+              const putObjectCommand = new PutObjectCommand({
+                Bucket: viewerBucket,
+                Key: fileName,
+                Body: jsonData,
+                ContentType: 'application/json',
+              });
+
+              await s3Client.send(putObjectCommand);
+
+              return {
+                statusCode: 200,
+                body: 'images.json saved successfully!',
+              };
+            } catch (error) {
+              console.error('Error processing S3 event', error);
+              return {
+                statusCode: 500,
+                body: 'Error processing S3 event',
+              };
+            }
+          };
+      Environment:
+        Variables:
+          IMAGE_BUCKET: !Ref ImageBucket
+          VIEWER_BUCKET: !Ref ViewerBucket
+          IMAGES_JSON_FILENAME_PATH: !Ref ImagesJsonFilenamePath
+      Runtime: 'nodejs22.x'  # 例としてNode.jsを使用
+      Timeout: 300  # タイムアウト（300秒）
+
+  # S3イベント通知でLambdaをトリガー
+  # ImageBucketEvent:
+  #   Type: 'AWS::S3::BucketNotification'
+  #   Properties:
+  #     Bucket: !Ref ImageBucket
+  #     NotificationConfiguration:
+  #       LambdaFunctionConfigurations:
+  #         - Event: 's3:ObjectCreated:*'
+  #           Function: !GetAtt UpdateImagesJsonLambda.Arn
+          
+  # Lambda関数にImageBucketへのアクセス許可を付与
+  # LambdaInvokePermission:
+  #   Type: 'AWS::Lambda::Permission'
+  #   Properties:
+  #     Action: 'lambda:InvokeFunction'
+  #     FunctionName: !Ref UpdateImagesJsonLambda
+  #     Principal: 's3.amazonaws.com'
+  #     SourceArn: !GetAtt ImageBucket.Arn
+
+# -----------------------------------------------------------------------------------------------
 
 Outputs:
   ApiEndpoint:
