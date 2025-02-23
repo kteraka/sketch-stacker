@@ -1,6 +1,8 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: 'Gyazo-like service using AWS services with Basic Authentication and CloudFront'
 
+# 循環参照を避けるため、UpdateImagesJsonLambda 関連のリソースを S3バケット、CloudFrontより先に作成する必要あり
+
 Parameters:
   ImageBucketName:
     Type: String
@@ -19,6 +21,9 @@ Parameters:
     Type: String
     Default: viewer/images.json
     Description: This Json file logs filenames stored in ImageBucket
+  CloudFrontDistributionId:
+    Type: String
+    Description: For avoiding circular dependency in UpdateImagesJsonLambda. At first deploy, fill here some dummy string. After deploy, fill here the created Distribution ID in your stack and update stack so that UpdateImagesJsonLambda will work.
 
 Resources:
   ImageBucket:
@@ -30,11 +35,12 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
-      # NotificationConfiguration:
-      #   LambdaConfigurations:
-      #     - Event: "s3:ObjectCreated:Put"
-      #       Function: !GetAtt UpdateImagesJsonLambda.Arn
-
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt UpdateImagesJsonLambda.Arn
+    DependsOn:
+      - UpdateImagesJsonLambdaPermission
   ImageBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
@@ -123,7 +129,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:PutObject
-                Resource: !Sub ${ImageBucket.Arn}/*
+                Resource: !Sub arn:aws:s3:::${ImageBucketName}/*  # Avoid recursive reference
 
   UploadFunction:
     Type: AWS::Lambda::Function
@@ -343,16 +349,20 @@ Resources:
                   - 's3:GetObject'
                   - 's3:PutObject'
                 Resource:
-                  - !Sub 'arn:aws:s3:::${ViewerBucket}'
-                  - !Sub 'arn:aws:s3:::${ViewerBucket}/*'
-                  - !Sub 'arn:aws:s3:::${ImageBucket}'
-                  - !Sub 'arn:aws:s3:::${ImageBucket}/*'
+                  - !Sub 'arn:aws:s3:::${ViewerBucketName}'
+                  - !Sub 'arn:aws:s3:::${ViewerBucketName}/*'
+                  - !Sub 'arn:aws:s3:::${ImageBucketName}'
+                  - !Sub 'arn:aws:s3:::${ImageBucketName}/*'
               - Effect: 'Allow'
                 Action:
                   - 'logs:CreateLogGroup'
                   - 'logs:CreateLogStream'
                   - 'logs:PutLogEvents'
                 Resource: 'arn:aws:logs:*:*:*'
+              - Effect: 'Allow'
+                Action: 
+                  - 'cloudfront:CreateInvalidation'
+                Resource: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistributionId}' # Avoid recursive reference
 
   UpdateImagesJsonLambda:
     Type: 'AWS::Lambda::Function'
@@ -363,6 +373,7 @@ Resources:
       Code:
         ZipFile: |
           const { S3Client, ListObjectsV2Command, PutObjectCommand } = require('@aws-sdk/client-s3');
+          const { CloudFront } = require('@aws-sdk/client-cloudfront');
 
           const s3Client = new S3Client({ region: process.env.AWS_DEFAULT_REGION });
 
@@ -391,7 +402,19 @@ Resources:
               });
 
               await s3Client.send(putObjectCommand);
-
+              console.log("/"+fileName)
+              //images.jsonのキャッシュを削除しviewerに反映させる
+              const client = new CloudFront();
+              await client.createInvalidation({
+                DistributionId: process.env.DISTRIBUTION_ID,
+                InvalidationBatch: {
+                  CallerReference: new Date().toISOString(),
+                  Paths: {
+                    Quantity: 1,
+                    Items: ["/" + fileName]
+                  }
+                }
+              });
               return {
                 statusCode: 200,
                 body: 'images.json saved successfully!',
@@ -406,21 +429,22 @@ Resources:
           };
       Environment:
         Variables:
-          IMAGE_BUCKET: !Ref ImageBucket
-          VIEWER_BUCKET: !Ref ViewerBucket
+          IMAGE_BUCKET: !Ref ImageBucketName
+          VIEWER_BUCKET: !Ref ViewerBucketName
+          DISTRIBUTION_ID: !Ref CloudFrontDistributionId # Avoid recursive reference
           IMAGES_JSON_FILENAME_PATH: !Ref ImagesJsonFilenamePath
       Runtime: 'nodejs22.x'  # 例としてNode.jsを使用
       Timeout: 300  # タイムアウト（300秒）
           
   # Lambda関数にImageBucketへのアクセス許可を付与
-  # LambdaInvokePermission:
-  #   Type: 'AWS::Lambda::Permission'
-  #   Properties:
-  #     Action: 'lambda:InvokeFunction'
-  #     FunctionName: !Ref UpdateImagesJsonLambda
-  #     Principal: 's3.amazonaws.com'
-  #     SourceArn: !Sub arn:aws:s3:::${ImageBucketName}
-
+  UpdateImagesJsonLambdaPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref UpdateImagesJsonLambda
+      Principal: 's3.amazonaws.com'
+      SourceArn: !Sub arn:aws:s3:::${ImageBucketName}  # Avoid recursive reference
+    
 # -----------------------------------------------------------------------------------------------
 
 Outputs:
