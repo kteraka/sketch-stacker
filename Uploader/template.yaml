@@ -30,18 +30,10 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
-
-  CloudFrontOriginAccessIdentityForImageBucket:
-    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
-    Properties:
-      CloudFrontOriginAccessIdentityConfig:
-        Comment: !Sub "OAI for ${ImageBucketName}"
-
-  CloudFrontOriginAccessIdentityForViewerBucket:
-    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
-    Properties:
-      CloudFrontOriginAccessIdentityConfig:
-        Comment: !Sub "OAI for ${ViewerBucketName}"
+      # NotificationConfiguration:
+      #   LambdaConfigurations:
+      #     - Event: "s3:ObjectCreated:Put"
+      #       Function: !GetAtt UpdateImagesJsonLambda.Arn
 
   ImageBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -52,8 +44,28 @@ Resources:
           - Action: 's3:GetObject'
             Effect: Allow
             Resource: !Sub '${ImageBucket.Arn}/*'
-            Principal:
-              CanonicalUser: !GetAtt CloudFrontOriginAccessIdentityForImageBucket.S3CanonicalUserId
+            Principal: '*'
+            Condition:
+              StringEquals:
+                aws:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}'
+
+  ImageBucketOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "OAC for ${ImageBucketName}"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  ViewerBucketOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "OAC for ${ViewerBucketName}"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
 
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
@@ -73,12 +85,12 @@ Resources:
         Origins:
           - DomainName: !GetAtt ImageBucket.RegionalDomainName
             Id: ImageS3Origin
-            S3OriginConfig:
-              OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentityForImageBucket}'
+            S3OriginConfig: {}
+            OriginAccessControlId: !Ref ImageBucketOAC
           - DomainName: !GetAtt ViewerBucket.RegionalDomainName
             Id: ViewerS3Origin
-            S3OriginConfig:
-              OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentityForViewerBucket}'
+            S3OriginConfig: {}
+            OriginAccessControlId: !Ref ViewerBucketOAC
         PriceClass: PriceClass_100
         CacheBehaviors:
           - PathPattern: '/viewer/*'
@@ -300,8 +312,10 @@ Resources:
           - Action: 's3:GetObject'
             Effect: Allow
             Resource: !Sub '${ViewerBucket.Arn}/*'
-            Principal:
-              CanonicalUser: !GetAtt CloudFrontOriginAccessIdentityForViewerBucket.S3CanonicalUserId
+            Principal: '*'
+            Condition:
+              StringEquals:
+                aws:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}'
 
 # -----------------------------------------------------------------------------------------------
 # images.json 更新用リソース
@@ -397,16 +411,6 @@ Resources:
           IMAGES_JSON_FILENAME_PATH: !Ref ImagesJsonFilenamePath
       Runtime: 'nodejs22.x'  # 例としてNode.jsを使用
       Timeout: 300  # タイムアウト（300秒）
-
-  # S3イベント通知でLambdaをトリガー
-  # ImageBucketEvent:
-  #   Type: 'AWS::S3::BucketNotification'
-  #   Properties:
-  #     Bucket: !Ref ImageBucket
-  #     NotificationConfiguration:
-  #       LambdaFunctionConfigurations:
-  #         - Event: 's3:ObjectCreated:*'
-  #           Function: !GetAtt UpdateImagesJsonLambda.Arn
           
   # Lambda関数にImageBucketへのアクセス許可を付与
   # LambdaInvokePermission:
@@ -415,7 +419,7 @@ Resources:
   #     Action: 'lambda:InvokeFunction'
   #     FunctionName: !Ref UpdateImagesJsonLambda
   #     Principal: 's3.amazonaws.com'
-  #     SourceArn: !GetAtt ImageBucket.Arn
+  #     SourceArn: !Sub arn:aws:s3:::${ImageBucketName}
 
 # -----------------------------------------------------------------------------------------------
 
