@@ -14,9 +14,6 @@ Parameters:
     Type: String
     Description: Password for Basic Authentication
     NoEcho: true
-  ViewerBucketName:
-    Type: String
-    Description: Name of the S3 bucket to locate viewer site
   ImagesJsonFilenamePath:
     Type: String
     Default: viewer/images.json
@@ -64,15 +61,6 @@ Resources:
         SigningBehavior: always
         SigningProtocol: sigv4
 
-  ViewerBucketOAC:
-    Type: AWS::CloudFront::OriginAccessControl
-    Properties:
-      OriginAccessControlConfig:
-        Name: !Sub "OAC for ${ViewerBucketName}"
-        OriginAccessControlOriginType: s3
-        SigningBehavior: always
-        SigningProtocol: sigv4
-
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -93,21 +81,7 @@ Resources:
             Id: ImageS3Origin
             S3OriginConfig: {}
             OriginAccessControlId: !Ref ImageBucketOAC
-          - DomainName: !GetAtt ViewerBucket.RegionalDomainName
-            Id: ViewerS3Origin
-            S3OriginConfig: {}
-            OriginAccessControlId: !Ref ViewerBucketOAC
         PriceClass: PriceClass_100
-        CacheBehaviors:
-          - PathPattern: '/viewer/*'
-            TargetOriginId: ViewerS3Origin
-            AllowedMethods:
-              - GET
-              - HEAD
-              - OPTIONS
-            ForwardedValues:
-              QueryString: false
-            ViewerProtocolPolicy: redirect-to-https
 
   UploadLambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -285,45 +259,6 @@ Resources:
       Principal: apigateway.amazonaws.com
 
 # -----------------------------------------------------------------------------------------------
-# 画像閲覧サイトホスティング用 S3 バケット
-# -----------------------------------------------------------------------------------------------
-
-  ViewerBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Ref ViewerBucketName
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-      VersioningConfiguration:
-        Status: Enabled
-      CorsConfiguration:
-        CorsRules:
-          - AllowedOrigins:
-              - "*"
-            AllowedMethods:
-              - GET
-            AllowedHeaders:
-              - "*"
-            MaxAge: 3000
-
-  ViewerBucketPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref ViewerBucket
-      PolicyDocument:
-        Statement:
-          - Action: 's3:GetObject'
-            Effect: Allow
-            Resource: !Sub '${ViewerBucket.Arn}/*'
-            Principal: '*'
-            Condition:
-              StringEquals:
-                aws:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}'
-
-# -----------------------------------------------------------------------------------------------
 # images.json 更新用リソース
 # -----------------------------------------------------------------------------------------------
 
@@ -349,8 +284,6 @@ Resources:
                   - 's3:GetObject'
                   - 's3:PutObject'
                 Resource:
-                  - !Sub 'arn:aws:s3:::${ViewerBucketName}'
-                  - !Sub 'arn:aws:s3:::${ViewerBucketName}/*'
                   - !Sub 'arn:aws:s3:::${ImageBucketName}'
                   - !Sub 'arn:aws:s3:::${ImageBucketName}/*'
               - Effect: 'Allow'
@@ -379,11 +312,10 @@ Resources:
 
           exports.handler = async (event) => {
             const imageBucket = process.env.IMAGE_BUCKET;
-            const viewerBucket = process.env.VIEWER_BUCKET;
             const fileName = process.env.IMAGES_JSON_FILENAME_PATH;
 
             try {
-              // viewerBucket内のオブジェクトリストを取得
+              // imageBucket内のオブジェクトリストを取得
               const listObjectsCommand = new ListObjectsV2Command({ Bucket: imageBucket });
               const listObjectsResponse = await s3Client.send(listObjectsCommand);
               const fileNames = listObjectsResponse.Contents.map(object => object.Key);
@@ -393,9 +325,9 @@ Resources:
               const jsonData = JSON.stringify(fileNames, null, 2);
               console.log(jsonData);
 
-              // viewerBucketにimages.jsonを保存
+              // imageBucketにimages.jsonを保存
               const putObjectCommand = new PutObjectCommand({
-                Bucket: viewerBucket,
+                Bucket: imageBucket,
                 Key: fileName,
                 Body: jsonData,
                 ContentType: 'application/json',
@@ -430,7 +362,6 @@ Resources:
       Environment:
         Variables:
           IMAGE_BUCKET: !Ref ImageBucketName
-          VIEWER_BUCKET: !Ref ViewerBucketName
           DISTRIBUTION_ID: !Ref CloudFrontDistributionId # Avoid recursive reference
           IMAGES_JSON_FILENAME_PATH: !Ref ImagesJsonFilenamePath
       Runtime: 'nodejs22.x'  # 例としてNode.jsを使用

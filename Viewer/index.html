@@ -17,22 +17,26 @@
     <script>
         const BASE_URL = "https://d3bbpjrhbo1x61.cloudfront.net/";
         const JSON_URL = BASE_URL + "viewer/images.json";
-
+        
         fetch(JSON_URL)
             .then(response => response.json())
             .then(images => {
-                // タイムスタンプ順にソート（降順）
+                // 除外するパスを指定
+                const excludePaths = ["viewer/", "viewer/index.html", "viewer/images.json"];
+                
+                // 除外パスを除いた上で、タイムスタンプ順にソート（降順）
+                images = images.filter(filename => !excludePaths.includes(filename));
                 images.sort((a, b) => b.localeCompare(a));
-
+                
                 const gallery = document.getElementById("gallery");
                 images.forEach(filename => {
                     const galleryItem = document.createElement("div");
                     galleryItem.classList.add("gallery-item");
-
+                    
                     const img = document.createElement("img");
                     img.src = BASE_URL + filename;
                     img.alt = filename;
-
+                    
                     const copyBtn = document.createElement("button");
                     copyBtn.classList.add("copy-btn");
                     copyBtn.textContent = "Copy";
@@ -44,7 +48,7 @@
                         document.execCommand("copy");
                         document.body.removeChild(input);
                     };
-
+                    
                     galleryItem.appendChild(img);
                     galleryItem.appendChild(copyBtn);
                     gallery.appendChild(galleryItem);
