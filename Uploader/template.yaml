@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Gyazo-like service using AWS services with Basic Authentication and CloudFront'
+Description: Gyazo-like service using AWS services with Basic Authentication and CloudFront
 
-# 循環参照を避けるため、UpdateImagesJsonLambda 関連のリソースを S3バケット、CloudFrontより先に作成する必要あり
+# ???????????UpdateImagesJsonLambda ???????? S3?????CloudFront????????????
 
 Parameters:
   ImageBucketName:
@@ -10,21 +10,36 @@ Parameters:
   BasicAuthUsername:
     Type: String
     Description: Username for Basic Authentication
-  BasicAuthPassword:
-    Type: String
-    Description: Password for Basic Authentication
-    NoEcho: true
+  # BasicAuthPassword:
+  #   Type: String
+  #   Description: Password for Basic Authentication
+  #   NoEcho: true
   ImagesJsonFilenamePath:
     Type: String
     Default: viewer/images.json
     Description: This Json file logs filenames stored in ImageBucket
   CloudFrontDistributionId:
     Type: String
-    Description: For avoiding circular dependency in UpdateImagesJsonLambda. At first deploy, fill here some dummy string. After deploy, fill here the created Distribution ID in your stack and update stack so that UpdateImagesJsonLambda will work.
+    Description: For avoiding circular dependency in UpdateImagesJsonLambda. At
+      first deploy, fill here some dummy string. After deploy, fill here the
+      created Distribution ID in your stack and update stack so that
+      UpdateImagesJsonLambda will work.
 
 Resources:
+  BasicAuthPassword:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub ${AWS::StackName}Secret
+      Description: Password for Basic Authentication
+      GenerateSecretString:
+        SecretStringTemplate: '{"secret_key": "password"}'
+        GenerateStringKey: secret_key
+        PasswordLength: 16
+        ExcludePunctuation: true
+        RequireEachIncludedType: true
   ImageBucket:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
     Properties:
       BucketName: !Ref ImageBucketName
       PublicAccessBlockConfiguration:
@@ -44,19 +59,19 @@ Resources:
       Bucket: !Ref ImageBucket
       PolicyDocument:
         Statement:
-          - Action: 's3:GetObject'
+          - Action: s3:GetObject
             Effect: Allow
-            Resource: !Sub '${ImageBucket.Arn}/*'
+            Resource: !Sub ${ImageBucket.Arn}/*
             Principal: '*'
             Condition:
               StringEquals:
-                aws:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}'
+                aws:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}
 
   ImageBucketOAC:
     Type: AWS::CloudFront::OriginAccessControl
     Properties:
       OriginAccessControlConfig:
-        Name: !Sub "OAC for ${ImageBucketName}"
+        Name: !Sub OAC for ${ImageBucketName}
         OriginAccessControlOriginType: s3
         SigningBehavior: always
         SigningProtocol: sigv4
@@ -103,7 +118,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:PutObject
-                Resource: !Sub arn:aws:s3:::${ImageBucketName}/*  # Avoid recursive reference
+                Resource: !Sub arn:aws:s3:::${ImageBucketName}/* # Avoid recursive reference
 
   UploadFunction:
     Type: AWS::Lambda::Function
@@ -161,7 +176,7 @@ Resources:
   ApiGateway:
     Type: AWS::ApiGateway::RestApi
     Properties:
-      Name: ImageUploadAPI
+      Name: !Sub ${AWS::StackName}ImageUploadAPI
 
   ApiResource:
     Type: AWS::ApiGateway::Resource
@@ -173,7 +188,7 @@ Resources:
   ApiAuthorizer:
     Type: AWS::ApiGateway::Authorizer
     Properties:
-      Name: BasicAuthorizer
+      Name: !Sub ${AWS::StackName}BasicAuthorizer
       Type: REQUEST
       IdentitySource: method.request.header.Authorization
       RestApiId: !Ref ApiGateway
@@ -192,7 +207,6 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UploadFunction.Arn}/invocations
-
 
   ApiDeployment:
     Type: AWS::ApiGateway::Deployment
@@ -219,16 +233,16 @@ Resources:
           exports.handler = async (event) => {
             const authHeader = event.headers.Authorization || event.headers.authorization;
             if (!authHeader) return generatePolicy('user', 'Deny', event.methodArn);
-            
+
             const encodedCreds = authHeader.split(' ')[1];
             const plainCreds = Buffer.from(encodedCreds, 'base64').toString().split(':');
             const username = plainCreds[0];
             const password = plainCreds[1];
-            
+
             if (username === process.env.AUTH_USERNAME && password === process.env.AUTH_PASSWORD) {
               return generatePolicy('user', 'Allow', event.methodArn);
             }
-            
+
             return generatePolicy('user', 'Deny', event.methodArn);
           };
 
@@ -249,7 +263,7 @@ Resources:
       Environment:
         Variables:
           AUTH_USERNAME: !Ref BasicAuthUsername
-          AUTH_PASSWORD: !Ref BasicAuthPassword
+          AUTH_PASSWORD: !Sub '{{resolve:secretsmanager:${BasicAuthPassword}:SecretString:secret_key}}'
 
   AuthorizerPermission:
     Type: AWS::Lambda::Permission
@@ -258,50 +272,49 @@ Resources:
       FunctionName: !Ref AuthorizerFunction
       Principal: apigateway.amazonaws.com
 
-# -----------------------------------------------------------------------------------------------
-# images.json 更新用リソース
-# -----------------------------------------------------------------------------------------------
+  # -----------------------------------------------------------------------------------------------
+  # images.json ???????
+  # -----------------------------------------------------------------------------------------------
 
-  # UpdateImagesJsonLambda 用IAMロール
+  # UpdateImagesJsonLambda ?IAM???
   UpdateImagesJsonLambdaExecutionRole:
-    Type: 'AWS::IAM::Role'
+    Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
-          - Effect: 'Allow'
+          - Effect: Allow
             Principal:
-              Service: 'lambda.amazonaws.com'
-            Action: 'sts:AssumeRole'
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
       Policies:
-        - PolicyName: 'S3AccessPolicy'
+        - PolicyName: !Sub ${AWS::StackName}S3AccessPolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Effect: 'Allow'
+              - Effect: Allow
                 Action:
-                  - 's3:ListBucket'
-                  - 's3:GetObject'
-                  - 's3:PutObject'
+                  - s3:ListBucket
+                  - s3:GetObject
+                  - s3:PutObject
                 Resource:
-                  - !Sub 'arn:aws:s3:::${ImageBucketName}'
-                  - !Sub 'arn:aws:s3:::${ImageBucketName}/*'
-              - Effect: 'Allow'
+                  - !Sub arn:aws:s3:::${ImageBucketName}
+                  - !Sub arn:aws:s3:::${ImageBucketName}/*
+              - Effect: Allow
                 Action:
-                  - 'logs:CreateLogGroup'
-                  - 'logs:CreateLogStream'
-                  - 'logs:PutLogEvents'
-                Resource: 'arn:aws:logs:*:*:*'
-              - Effect: 'Allow'
-                Action: 
-                  - 'cloudfront:CreateInvalidation'
-                Resource: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistributionId}' # Avoid recursive reference
-
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action:
+                  - cloudfront:CreateInvalidation
+                Resource: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistributionId} # Avoid recursive reference
   UpdateImagesJsonLambda:
-    Type: 'AWS::Lambda::Function'
+    Type: AWS::Lambda::Function
     Properties:
-      FunctionName: 'UpdateImagesJsonFunction'
-      Handler: 'index.handler'
+      FunctionName: !Sub ${AWS::StackName}UpdateImagesJsonFunction
+      Handler: index.handler
       Role: !GetAtt UpdateImagesJsonLambdaExecutionRole.Arn
       Code:
         ZipFile: |
@@ -315,17 +328,17 @@ Resources:
             const fileName = process.env.IMAGES_JSON_FILENAME_PATH;
 
             try {
-              // imageBucket内のオブジェクトリストを取得
+              // imageBucket??????????????
               const listObjectsCommand = new ListObjectsV2Command({ Bucket: imageBucket });
               const listObjectsResponse = await s3Client.send(listObjectsCommand);
               const fileNames = listObjectsResponse.Contents.map(object => object.Key);
               console.log(fileNames);
 
-              // images.jsonファイルとして保存するデータ作成
+              // images.json????????????????
               const jsonData = JSON.stringify(fileNames, null, 2);
               console.log(jsonData);
 
-              // imageBucketにimages.jsonを保存
+              // imageBucket?images.json???
               const putObjectCommand = new PutObjectCommand({
                 Bucket: imageBucket,
                 Key: fileName,
@@ -335,7 +348,7 @@ Resources:
 
               await s3Client.send(putObjectCommand);
               console.log("/"+fileName)
-              //images.jsonのキャッシュを削除しviewerに反映させる
+              //images.json??????????viewer??????
               const client = new CloudFront();
               await client.createInvalidation({
                 DistributionId: process.env.DISTRIBUTION_ID,
@@ -364,24 +377,24 @@ Resources:
           IMAGE_BUCKET: !Ref ImageBucketName
           DISTRIBUTION_ID: !Ref CloudFrontDistributionId # Avoid recursive reference
           IMAGES_JSON_FILENAME_PATH: !Ref ImagesJsonFilenamePath
-      Runtime: 'nodejs22.x'  # 例としてNode.jsを使用
-      Timeout: 300  # タイムアウト（300秒）
-          
-  # Lambda関数にImageBucketへのアクセス許可を付与
+      Runtime: nodejs22.x # ????Node.js???
+      Timeout: 300 # ???????300??
+
+  # Lambda???ImageBucket???????????
   UpdateImagesJsonLambdaPermission:
-    Type: 'AWS::Lambda::Permission'
+    Type: AWS::Lambda::Permission
     Properties:
-      Action: 'lambda:InvokeFunction'
+      Action: lambda:InvokeFunction
       FunctionName: !Ref UpdateImagesJsonLambda
-      Principal: 's3.amazonaws.com'
-      SourceArn: !Sub arn:aws:s3:::${ImageBucketName}  # Avoid recursive reference
-    
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub arn:aws:s3:::${ImageBucketName} # Avoid recursive reference
+
 # -----------------------------------------------------------------------------------------------
 
 Outputs:
   ApiEndpoint:
-    Description: "API Endpoint"
+    Description: API Endpoint
     Value: !Sub https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/upload
   CloudFrontDomain:
-    Description: "CloudFront Distribution Domain"
+    Description: CloudFront Distribution Domain
     Value: !GetAtt CloudFrontDistribution.DomainName
