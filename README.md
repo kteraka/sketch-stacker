@@ -40,3 +40,6 @@ api Gateway+lambda を介して S3バケット上に画像を保存し、CloudFr
 ※エンコードしたUsername, Passwordを指定する必要あり
 
 - 保存した画像については、`<CloudFront ドメイン名>/viewer/index.html` にアクセスして確認
+
+# 例
+https://d3a21s3joww9j4.cloudfront.net/viewer/index.html
