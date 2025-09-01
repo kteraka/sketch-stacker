@@ -1,0 +1,81 @@
+import { useState } from 'react';
+
+const ImageItem = ({ imageName, baseUrl, onImageClick }) => {
+  const extractTimestamp = (name) => {
+    const m = name.match(/(\d{10,13})(?=\.[A-Za-z]+$)/);
+    if (!m) return null;
+    const num = Number(m[1]);
+    return num > 1e12 ? Math.floor(num / 1000) : num; // 13桁→秒へ
+  };
+
+  const unixToDateString = (sec) => {
+    const d = new Date(sec * 1000);
+    return d.toLocaleDateString("ja-JP", {
+      year: "numeric", 
+      month: "2-digit", 
+      day: "2-digit"
+    }) + " " +
+    d.toLocaleTimeString("ja-JP", {
+      hour: "2-digit", 
+      minute: "2-digit", 
+      hour12: false
+    });
+  };
+
+  const handleCopyUrl = (e) => {
+    e.stopPropagation();
+    const imageUrl = getImageUrl();
+    navigator.clipboard.writeText(imageUrl);
+  };
+
+  const handleOpenImage = (e) => {
+    e.stopPropagation();
+    const imageUrl = getImageUrl();
+    window.open(imageUrl, "_blank");
+  };
+
+  const handleImageClick = () => {
+    onImageClick(getImageUrl());
+  };
+
+  const getImageUrl = () => {
+    return import.meta.env.DEV 
+      ? `https://picsum.photos/400/300?random=${imageName}`  // 開発：placeholder
+      : baseUrl + imageName;  // 本番：実際のCloudFront
+  };
+
+  const timestamp = extractTimestamp(imageName);
+
+  return (
+    <div className="gallery-item">
+      <img
+        src={getImageUrl()}
+        alt={imageName}
+        loading="lazy"
+        onClick={handleImageClick}
+      />
+      
+      <button 
+        className="ctrl-btn open-btn"
+        onClick={handleOpenImage}
+      >
+        Open
+      </button>
+      
+      <button 
+        className="ctrl-btn copy-btn"
+        onClick={handleCopyUrl}
+      >
+        Copy
+      </button>
+      
+      {timestamp && (
+        <span className="date-label">
+          {unixToDateString(timestamp)}
+        </span>
+      )}
+    </div>
+  );
+};
+
+export default ImageItem;

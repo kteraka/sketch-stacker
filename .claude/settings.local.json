@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node:*)",
+      "Bash(npm:*)",
+      "Bash(curl:*)",
+      "Bash(nslookup:*)",
+      "Bash(ping:*)",
+      "Bash(wget:*)",
+      "Bash(ip route:*)",
+      "Read(/etc/**)",
+      "Bash(chmod:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

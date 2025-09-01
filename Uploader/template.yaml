@@ -76,6 +76,32 @@ Resources:
         SigningBehavior: always
         SigningProtocol: sigv4
 
+  # CORS Response Headers Policy
+  CORSResponseHeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub "${AWS::StackName}-CORS-Policy"
+        Comment: "CORS headers for image viewer application"
+        CorsConfig:
+          AccessControlAllowCredentials: false
+          AccessControlAllowHeaders:
+            Items:
+              - "*"
+          AccessControlAllowMethods:
+            Items:
+              - GET
+              - HEAD
+              - OPTIONS
+          AccessControlAllowOrigins:
+            Items:
+              - "http://localhost:*"
+              - "https://localhost:*"
+              - "http://127.0.0.1:*"
+              - "https://127.0.0.1:*"
+          AccessControlMaxAgeSec: 600
+          OriginOverride: true
+
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -89,6 +115,7 @@ Resources:
             QueryString: false
           TargetOriginId: ImageS3Origin
           ViewerProtocolPolicy: redirect-to-https
+          ResponseHeadersPolicyId: !Ref CORSResponseHeadersPolicy
         Enabled: true
         HttpVersion: http2
         Origins:

@@ -40,3 +40,7 @@ api Gateway+lambda を介して S3バケット上に画像を保存し、CloudFr
 ※エンコードしたUsername, Passwordを指定する必要あり
 
 - 保存した画像については、`<CloudFront ドメイン名>/viewer/index.html` にアクセスして確認
+
+# 開発
+
+Claude Codeが提供する Dev Container 環境を使う
