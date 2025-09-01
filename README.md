@@ -44,3 +44,6 @@ api Gateway+lambda を介して S3バケット上に画像を保存し、CloudFr
 # 開発
 
 Claude Codeが提供する Dev Container 環境を使う
+
+# 例
+https://d3a21s3joww9j4.cloudfront.net/viewer/index.html
