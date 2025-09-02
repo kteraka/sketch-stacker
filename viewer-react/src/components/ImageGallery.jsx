@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import ImageItem from './ImageItem';
 import Modal from './Modal';
+import ContributionCalendar from './ContributionCalendar';
 
 const ImageGallery = () => {
   const [images, setImages] = useState([]);
@@ -81,6 +82,9 @@ const ImageGallery = () => {
 
   return (
     <>
+      {/* Contribution Calendar */}
+      <ContributionCalendar images={images} />
+      
       <div className="gallery">
         {displayedImages.map((imageName, index) => (
           <ImageItem

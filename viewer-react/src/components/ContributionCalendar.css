@@ -1,0 +1,238 @@
+/* ContributionCalendar.css */
+.contribution-calendar {
+  width: 100%;
+  max-width: 828px;
+  margin: 2rem auto; /* 左右中央揃え */
+  padding: 1rem;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.stats {
+  display: flex;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.stat-item {
+  color: #656d76;
+  font-size: 0.875rem;
+}
+
+.stat-item strong {
+  color: #24292f;
+}
+
+.stat-item.total {
+  color: #656d76;
+}
+
+.year-selector {
+  padding: 0.5rem;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #fff;
+  color: #24292f;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.year-selector:hover {
+  border-color: #8c959f;
+}
+
+.calendar-container {
+  position: relative;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto 1fr;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.month-labels {
+  grid-column: 2;
+  grid-row: 1;
+  display: grid;
+  grid-template-columns: repeat(53, 1fr);
+  margin-bottom: 0.5rem;
+}
+
+.month-label {
+  color: #656d76;
+  font-size: 0.75rem;
+  text-align: left;
+}
+
+.day-labels {
+  grid-column: 1;
+  grid-row: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-right: 0.5rem;
+  padding-top: 1px;
+}
+
+.day-label {
+  height: 11px;
+  line-height: 11px;
+  color: #656d76;
+  font-size: 0.6875rem;
+  text-align: right;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.weeks-container {
+  grid-column: 2;
+  grid-row: 3;
+  display: flex;
+  gap: 1px;
+}
+
+.week {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.day {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  cursor: pointer;
+  position: relative;
+}
+
+/* GitHub風の緑のレベル */
+.day.level-0 {
+  background-color: #ebedf0;
+}
+
+.day.level-1 {
+  background-color: #9be9a8;
+}
+
+.day.level-2 {
+  background-color: #40c463;
+}
+
+.day.level-3 {
+  background-color: #30a14e;
+}
+
+.day.level-4 {
+  background-color: #216e39;
+}
+
+/* 年外の日付を薄く */
+.day.outside-year {
+  opacity: 0.3;
+}
+
+/* ホバー効果 */
+.day:hover {
+  stroke: rgba(27, 31, 36, 0.15);
+  stroke-width: 1px;
+}
+
+/* ツールチップ風（ブラウザ標準のtitle属性使用） */
+.day[title]:hover {
+  position: relative;
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  font-size: 0.75rem;
+  color: #656d76;
+}
+
+.legend-levels {
+  display: flex;
+  gap: 1px;
+}
+
+.legend-day {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+}
+
+.legend-text {
+  font-size: 0.75rem;
+  color: #656d76;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .contribution-calendar {
+    padding: 0.5rem;
+    margin: 1rem 0;
+  }
+  
+  .calendar-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .stats {
+    gap: 1rem;
+  }
+  
+  .calendar-grid {
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+  }
+  
+  .weeks-container {
+    min-width: 750px;
+  }
+}
+
+/* ダークモード対応（オプション） */
+@media (prefers-color-scheme: dark) {
+  .contribution-calendar {
+    background: #0d1117;
+    color: #e6edf3;
+  }
+  
+  .day.level-0 {
+    background-color: #161b22;
+  }
+  
+  .stat-item strong {
+    color: #e6edf3;
+  }
+  
+  .year-selector {
+    background: #21262d;
+    border-color: #30363d;
+    color: #e6edf3;
+  }
+  
+  .month-label,
+  .day-label,
+  .legend-text,
+  .stat-item {
+    color: #7d8590;
+  }
+}

@@ -28,8 +28,22 @@ npm install                    # Install dependencies
 npm run dev -- --host         # Start dev server (required for Dev Container)
 npm run build                  # Build for production
 npm run lint                   # Run ESLint
-npm run preview                # Preview production build
+npm run preview -- --host     # Preview production build with host flag
 ```
+
+#### Development vs Production Mode
+**Development Mode (`npm run dev`)**:
+- Uses mock data from `/test-images.json`
+- Placeholder images from picsum.photos
+- Hot reload enabled
+- Access: http://localhost:5173/
+
+**Production Mode (`npm run preview`)**:
+- Connects to actual CloudFront for real images
+- Uses production API endpoints
+- Static file serving
+- Access: http://localhost:4175/ (port may vary)
+- **Note**: CORS headers configured on CloudFront allow localhost access
 
 ### CloudFormation Deployment
 ```bash
