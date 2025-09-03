@@ -39,9 +39,7 @@ const ImageItem = ({ imageName, baseUrl, onImageClick }) => {
   };
 
   const getImageUrl = () => {
-    return import.meta.env.DEV 
-      ? `https://picsum.photos/400/300?random=${imageName}`  // 開発：placeholder
-      : baseUrl + imageName;  // 本番：実際のCloudFront
+    return baseUrl + imageName;  // 常にCloudFrontの実際の画像を使用
   };
 
   const timestamp = extractTimestamp(imageName);

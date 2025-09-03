@@ -3,9 +3,9 @@ import './App.css'
 
 function App() {
   return (
-    <div>
-      <h1>📸 Image Share Gallery</h1>
-      <p>Your contribution history and uploaded images</p>
+    <div className="container">
+      <h1>🎨 SketchStacker</h1>
+      <p className="subtitle">Your creative journey and artwork collection</p>
       <ImageGallery />
     </div>
   )

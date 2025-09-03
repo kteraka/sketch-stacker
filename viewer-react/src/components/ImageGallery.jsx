@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import ImageItem from './ImageItem';
 import Modal from './Modal';
 import ContributionCalendar from './ContributionCalendar';
+import Masonry from 'react-masonry-css';
 
 const ImageGallery = () => {
   const [images, setImages] = useState([]);
@@ -14,9 +15,7 @@ const ImageGallery = () => {
 
   // 設定
   const BASE_URL = "https://d3a21s3joww9j4.cloudfront.net/";
-  const JSON_URL = import.meta.env.DEV 
-    ? "/test-images.json"  // 開発：テストデータ 
-    : "https://d3a21s3joww9j4.cloudfront.net/viewer/images.json";  // 本番：直接CloudFront
+  const JSON_URL = "https://d3a21s3joww9j4.cloudfront.net/viewer/images.json";
   const EXCLUDE = ["viewer/", "viewer/index.html", "viewer/images.json"];
   const INITIAL_COUNT = 20;
 
@@ -55,9 +54,14 @@ const ImageGallery = () => {
     }
   };
 
-  const handleShowAll = () => {
-    setDisplayedImages(images);
-    setShowAll(true);
+  const handleLoadMore = () => {
+    const currentCount = displayedImages.length;
+    const nextBatch = images.slice(currentCount, currentCount + INITIAL_COUNT);
+    setDisplayedImages([...displayedImages, ...nextBatch]);
+    
+    if (currentCount + INITIAL_COUNT >= images.length) {
+      setShowAll(true);
+    }
   };
 
   const handleImageClick = (imageUrl) => {
@@ -80,12 +84,25 @@ const ImageGallery = () => {
 
   const hasMoreImages = !showAll && images.length > INITIAL_COUNT;
 
+  const breakpointColumns = {
+    default: 6,
+    1200: 5,
+    900: 4,
+    700: 3,
+    500: 2,
+    350: 1
+  };
+
   return (
     <>
       {/* Contribution Calendar */}
       <ContributionCalendar images={images} />
       
-      <div className="gallery">
+      <Masonry
+        breakpointCols={breakpointColumns}
+        className="gallery"
+        columnClassName="gallery-column"
+      >
         {displayedImages.map((imageName, index) => (
           <ImageItem
             key={`${imageName}-${index}`}
@@ -94,14 +111,14 @@ const ImageGallery = () => {
             onImageClick={handleImageClick}
           />
         ))}
-      </div>
+      </Masonry>
       
       {hasMoreImages && (
         <button 
-          className="show-all" 
-          onClick={handleShowAll}
+          className="load-more" 
+          onClick={handleLoadMore}
         >
-          Show All
+          Load More ({Math.min(INITIAL_COUNT, images.length - displayedImages.length)} more)
         </button>
       )}
       
