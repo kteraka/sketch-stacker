@@ -9,7 +9,10 @@
       "Bash(wget:*)",
       "Bash(ip route:*)",
       "Read(/etc/**)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(gh issue create:*)"
     ],
     "deny": [],
     "ask": []
