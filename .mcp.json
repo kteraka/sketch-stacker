@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "o3-search": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "o3-search-mcp"
+      ],
+      "env": {
+        "OPENAI_API_KEY": "${OPENAI_API_KEY}",
+        "OPENAI_MODEL": "gpt-5"
+      }
+    }
+  }
+}
