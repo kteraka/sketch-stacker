@@ -70,7 +70,7 @@ Claude Codeが提供する Dev Container 環境を使う
 
 2. **MCPサーバーの追加**
    ```bash
-   ./setup-mcp.sh
+   ./scripts/setup-mcp.sh
    ```
 
 3. **設定確認**

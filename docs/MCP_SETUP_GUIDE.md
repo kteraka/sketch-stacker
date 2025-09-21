@@ -32,7 +32,7 @@ RUN git clone https://github.com/yoshiko-pg/o3-search-mcp.git /tmp/o3-search-mcp
 `.env.example`ファイルに必要な環境変数の例を記載。
 
 ### 4. セットアップスクリプト
-`setup-mcp.sh`による自動化されたMCPサーバー追加。
+`scripts/setup-mcp.sh`による自動化されたMCPサーバー追加。
 
 ## 🚀 使用方法
 
@@ -61,7 +61,7 @@ VS CodeでDev Containerを開く。
 
 ### ステップ4: MCPサーバー設定
 ```bash
-./setup-mcp.sh
+./scripts/setup-mcp.sh
 ```
 
 ### ステップ5: 動作確認
