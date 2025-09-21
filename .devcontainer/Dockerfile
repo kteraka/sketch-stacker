@@ -25,7 +25,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   jq \
   nano \
   vim \
+  curl \
+  wget \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install Terraform
+RUN ARCH=$(dpkg --print-architecture) && \
+  TERRAFORM_VERSION=1.5.7 && \
+  wget "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_${ARCH}.zip" && \
+  unzip "terraform_${TERRAFORM_VERSION}_linux_${ARCH}.zip" && \
+  mv terraform /usr/local/bin/ && \
+  chmod +x /usr/local/bin/terraform && \
+  rm "terraform_${TERRAFORM_VERSION}_linux_${ARCH}.zip"
+
+# Install AWS CLI v2
+RUN ARCH=$(dpkg --print-architecture) && \
+  if [ "$ARCH" = "amd64" ]; then AWS_ARCH="x86_64"; else AWS_ARCH="aarch64"; fi && \
+  curl "https://awscli.amazonaws.com/awscli-exe-linux-${AWS_ARCH}.zip" -o "awscliv2.zip" && \
+  unzip awscliv2.zip && \
+  ./aws/install && \
+  rm -rf aws awscliv2.zip
 
 # Ensure default node user has access to /usr/local/share
 RUN mkdir -p /usr/local/share/npm-global && \
@@ -57,9 +76,10 @@ RUN ARCH=$(dpkg --print-architecture) && \
 # Set up non-root user
 USER node
 
-# Install global packages
+# Install global packages and pnpm
 ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
 ENV PATH=$PATH:/usr/local/share/npm-global/bin
+RUN npm install -g pnpm@latest
 
 # Set the default shell to zsh rather than sh
 ENV SHELL=/bin/zsh
@@ -80,6 +100,15 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
 
 # Install Claude
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
+
+# Install o3-search-mcp server
+RUN git clone https://github.com/yoshiko-pg/o3-search-mcp.git /tmp/o3-search-mcp && \
+    cd /tmp/o3-search-mcp && \
+    pnpm install && \
+    pnpm build && \
+    pnpm pack && \
+    npm install -g o3-search-mcp-*.tgz && \
+    rm -rf /tmp/o3-search-mcp
 
 
 # Copy and set up firewall script

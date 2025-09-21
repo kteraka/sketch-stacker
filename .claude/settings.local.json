@@ -12,9 +12,25 @@
       "Bash(chmod:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(gh issue create:*)"
+      "Bash(gh issue create:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh project create:*)",
+      "Bash(gh extension:*)",
+      "Bash(gh projects item-add:*)",
+      "WebSearch",
+      "Bash(mkdir:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(claude mcp:*)",
+      "mcp__o3-search__o3-search",
+      "Bash(echo:*)",
+      "Bash(aws sts get-caller-identity:*)",
+      "Bash(aws cloudformation describe-stack-resources:*)"
     ],
     "deny": [],
     "ask": []
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "o3-search"
+  ]
 }
